@@ -1,0 +1,23 @@
+(ns logic-portal.comm
+  (:require-macros [cljs.core.async.macros :refer [go]])
+  (:require  [cljs-http.client :as http]
+             [cljs.core.async :refer [<!]]
+             [reagent.core :as r]))
+
+(defonce base "http://localhost:5001/")
+(defonce assertions (r/atom nil))
+(defonce assertion-to-edit (r/atom {}))
+
+(defn get-req
+  ([path a]
+   (go (let [response (<! (http/get path {:with-credentials? false}))]
+         (reset! a (:body response)))))
+  ([path k a]
+   (go (let [response (<! (http/get path {:with-credentials? false}))]
+         (reset! a (get-in response [:body k]))))))
+
+(defn all-assertions []
+  (get-req (str base "all-assertions/") assertions))
+
+(defn retrieve-assertion [k a]
+  (get-req (str base "get-assertion/" k) a))
