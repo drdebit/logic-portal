@@ -92,7 +92,8 @@
    [submit-button "Return to assertions." mode-atom :view-assert]
    [:div (str @form)]])
 
-(defn select-assertions [[id s]]
+(defn select-assertions [{id :assertion/keyword
+                          s :assertion/description}]
   [:option {:value id} s])
 
 (defn relate-assert
@@ -106,29 +107,33 @@
     [:h1 "Relate assertions."]
     [:p "Relating assertion: "(:assertion/description @a)]
     [into [:select
-           {:id "assert-select"
-            :on-change #(when (not (= "" (.. % -target -value)))
-                          (swap! a assoc :relation/keyword (.. % -target -value)))}
-           [:option {:value nil} ""]]
-     (map select-assertions @comm/assertions)]
-    [into [:select
            {:id "relation-select"
             :on-change #(when (not (= "" (.. % -target -value)))
-                          (swap! a assoc :relation/type (.. % -target -value)))}
+                          (swap! a assoc :relation/type (keyword (.. % -target -value))))}
            [:option {:value nil} ""]
-           [:option {:value :parent} "parent"]
-           [:option {:value :child} "child"]
-           [:option {:value :conflict} "conflict"]]
+           [:option {:value :parent} "is a parent of"]
+           [:option {:value :child} "is a child of"]
+           [:option {:value :conflict} "conflicts with"]]
      ]
+    [into [:select
+           {:id "assert-select"
+            :on-change #(when (not (= "" (.. % -target -value)))
+                          (swap! a assoc :relation/keyword (keyword (.. % -target -value))))}
+           [:option {:value nil} ""]]
+     (map select-assertions
+          (filter #(not= (:assertion/keyword @a) (:assertion/keyword %)) @comm/assertions))]
+
     [:input.btn {:type "button" :value "Relate assertion."
                  :on-click (fn []
-                             (do (comm/relate-assertion (select-keys @a [:assertion/keyword :relation/keyword
+                             (do (comm/relate-assertion (select-keys @a [:assertion/keyword
+                                                                         :relation/keyword
                                                                          :relation/type]))))}]
        [submit-button "Return to assertions." mode-atom :view-assert]
     [:div (str @a)]
     ]))
 
-(defn arrange-assertions [[k v] a]
+(defn arrange-assertions [{k :assertion/keyword
+                           v :assertion/description} a]
   [:tr {:id k} [:td "..."] [:td v]
    [:td [:input.btn {:type "button" :value "Edit assertion."
                      :on-click (fn [] (do

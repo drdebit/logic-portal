@@ -4,7 +4,7 @@
              [cljs.core.async :refer [<!]]
              [reagent.core :as r]))
 
-(defonce base "http://localhost:5001/")
+(defonce base "http://34.238.208.202:5001/")
 (defonce assertions (r/atom nil))
 (defonce assertion-to-edit (r/atom {}))
 
