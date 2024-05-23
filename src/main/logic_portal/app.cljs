@@ -10,6 +10,9 @@
 (defonce title "Welcome to Assertive Accounting.")
 (defonce mode-atom (r/atom :welcome))
 
+(defn id->assertion [id]
+  (first (filter #(= id (:db/id %)) @comm/assertions)))
+
 (defn atom-input
   ([value]
    [:input {:type "text" :value @value
@@ -96,6 +99,32 @@
                           s :assertion/description}]
   [:option {:value id} s])
 
+(defn retrieve-relations [a]
+  (for [k [:assertion/depends-on :assertion/dependent :assertion/conflicts-with]]
+    (doall
+     (for [r (get @a k)]
+       (let [relation (id->assertion (:db/id r))
+             rk (:assertion/keyword relation)
+             tk (:assertion/keyword @a)
+             rt (case k
+                  :assertion/depends-on :parent
+                  :assertion/dependent :child
+                  :assertion/conflicts-with :conflict)]
+         ^{:key rk}
+         [:tr {:id rk}
+          [:td "..."] [:td (:assertion/description relation)]
+          [:td " is a " ] [:td rt]
+          [:td [:input.btn {:type "button" :value "Remove relation."
+                            :on-click
+                            (fn []
+                              (do (comm/change-relate-and-refresh
+                                   "unrelate-assertion/"
+                                   {:assertion/keyword rk
+                                    :relation/keyword tk
+                                    :relation/type rt}
+                                   tk
+                                   a)))}]]])))))
+
 (defn relate-assert
   ([]
    [:div#relate-assert
@@ -125,11 +154,22 @@
 
     [:input.btn {:type "button" :value "Relate assertion."
                  :on-click (fn []
-                             (do (comm/relate-assertion (select-keys @a [:assertion/keyword
-                                                                         :relation/keyword
-                                                                         :relation/type]))))}]
-       [submit-button "Return to assertions." mode-atom :view-assert]
-    [:div (str @a)]
+                             (do (comm/change-relate-and-refresh
+                                  "relate-assertion/"
+                                  (select-keys @a [:assertion/keyword
+                                                   :relation/keyword
+                                                   :relation/type])
+                                  (:assertion/keyword @a)
+                                  a)
+                                 
+                                 (set! (.. (.getElementById js/document "relation-select") -value) "")
+                                 (set! (.. (.getElementById js/document "assert-select") -value) "")))}]
+    [:div
+     [:p "Existing relations"]
+     [:table [into [:tbody] (retrieve-relations a)]]
+     [:p]]
+    [submit-button "Return to assertions." mode-atom :view-assert]
+    #_[:div (str @a)]
     ]))
 
 (defn arrange-assertions [{k :assertion/keyword

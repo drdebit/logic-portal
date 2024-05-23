@@ -11,7 +11,7 @@
 (defn get-req
   ([path a]
    (go (let [response (<! (http/get path {:with-credentials? false}))]
-         (reset! a (:body response)))))
+          (reset! a (:body response)))))
   ([path k a]
    (go (let [response (<! (http/get path {:with-credentials? false}))]
          (reset! a (get-in response [:body k]))))))
@@ -33,5 +33,9 @@
 (defn submit-assertion [m]
   (post-req "add-assertion/" m))
 
-(defn relate-assertion [m]
-  (post-req "relate-assertion/" m))
+(defn change-relate-and-refresh [post-path m k a]
+  (go (let [post-response (<! (http/post (str base post-path)
+                                    {:with-credentials? false
+                                     :edn-params m}))
+            get-response (<! (http/get (str base "get-assertion/" k) {:with-credentials? false}))]
+        (reset! a (:body get-response)))))
