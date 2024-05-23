@@ -80,20 +80,14 @@
                 :on-change #(swap! form assoc :assertion/description (-> % .-target .-value))}]]
    (r/with-let [new-value (r/atom "")]
      [:div "Enter an (optional) value to associate with the assertion."
-      [atom-input form [:assertion/required-value] ]
-      #_[:input.btn {:type "button" :value "Add value."
-                   :on-click (fn [] (swap! form update :assertion/required-value (fnil conj []) @new-value)
-                               (reset! new-value ""))}]
-      #_[into [:div]
-       (mapv #(arrange-values % form) (:assertion/required-value @form))]])
+      [atom-input form [:assertion/required-value]]])
    [:input.btn {:type "button" :value "Submit assertion."
                   :on-click (fn []
                               (do (comm/submit-assertion @form)
-                                  (comm/all-assertions)
                                   (reset! form {})))}]
    
-   [submit-button "Return to assertions." mode-atom :view-assert]
-   [:div (str @form)]])
+   [submit-button "Return to assertions." mode-atom :view-assert comm/all-assertions]
+   #_[:div (str @form)]])
 
 (defn select-assertions [{id :assertion/keyword
                           s :assertion/description}]
