@@ -27,15 +27,29 @@
 (defn all-assertions []
   (get-req (str base "all-assertions/") assertions))
 
+(defn all-relations [kw k a]
+  (get-req (str base "all-relations/" kw) k a))
+
 (defn retrieve-assertion [k a]
   (get-req (str base "get-assertion/" k) a))
+
+(defn retrieve-assertion-with-relations [k a]
+  (go (let [assertion-response (<! (http/get (str base "get-assertion/" k)
+                                             {:with-credentials? false}))
+            relation-response (<! (http/get (str base "all-relations/" k)
+                                            {:with-credentials? false}))]
+        (reset! a (:body assertion-response))
+        (swap! a assoc :relations (:body relation-response)))))
 
 (defn submit-assertion [m]
   (post-req "add-assertion/" m))
 
 (defn change-relate-and-refresh [post-path m k a]
   (go (let [post-response (<! (http/post (str base post-path)
-                                    {:with-credentials? false
-                                     :edn-params m}))
-            get-response (<! (http/get (str base "get-assertion/" k) {:with-credentials? false}))]
-        (reset! a (:body get-response)))))
+                                         {:with-credentials? false
+                                          :edn-params m}))
+            get-response (<! (http/get (str base "get-assertion/" k) {:with-credentials? false}))
+            relation-response (<! (http/get (str base "all-relations/" k)
+                                            {:with-credentials? false}))]
+        (reset! a (:body get-response))
+        (swap! a assoc :relations (:body relation-response)))))

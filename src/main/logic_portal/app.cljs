@@ -13,6 +13,10 @@
 (defn id->assertion [id]
   (first (filter #(= id (:db/id %)) @comm/assertions)))
 
+(defn id->kw [id]
+  (:assertion/keyword (id->assertion id)))
+
+
 (defn atom-input
   ([value]
    [:input {:type "text" :value @value
@@ -84,10 +88,14 @@
    [:input.btn {:type "button" :value "Submit assertion."
                   :on-click (fn []
                               (do (comm/submit-assertion @form)
+                                  (reset! form {})
+                                  (reset! mode-atom :relate-assert)))}]
+   [:input.btn {:type "button" :value "Submit assertion and add relations."
+                  :on-click (fn []
+                              (do (comm/submit-assertion @form)
                                   (reset! form {})))}]
-   
    [submit-button "Return to assertions." mode-atom :view-assert comm/all-assertions]
-   #_[:div (str @form)]])
+   [:div (str @form)]])
 
 (defn select-assertions [{id :assertion/keyword
                           s :assertion/description}]
@@ -144,7 +152,9 @@
                           (swap! a assoc :relation/keyword (keyword (.. % -target -value))))}
            [:option {:value nil} ""]]
      (map select-assertions
-          (filter #(not= (:assertion/keyword @a) (:assertion/keyword %)) @comm/assertions))]
+          (filter #(and (not= (:assertion/keyword @a) (:assertion/keyword %))
+                        (not (contains? (apply hash-set (map id->kw (:relations @a))) (:assertion/keyword %))))
+                  @comm/assertions))]
 
     [:input.btn {:type "button" :value "Relate assertion."
                  :on-click (fn []
@@ -162,8 +172,8 @@
      [:p "Existing relations"]
      [:table [into [:tbody] (retrieve-relations a)]]
      [:p]]
-    [submit-button "Return to assertions." mode-atom :view-assert]
-    #_[:div (str @a)]
+    [submit-button "Return to assertions." mode-atom :view-assert comm/all-assertions]
+    [:div (str @a)]
     ]))
 
 (defn arrange-assertions [{k :assertion/keyword
@@ -176,7 +186,7 @@
    [:td [:input.btn {:type "button" :value "Relate assertion."
                      :on-click (fn [] (do
                                         (reset! mode-atom :relate-assert)
-                                        (comm/retrieve-assertion k a)))}]]])
+                                        (comm/retrieve-assertion-with-relations k a)))}]]])
 
 
 (defn view-assert []
