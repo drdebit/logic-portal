@@ -16,7 +16,6 @@
 (defn id->kw [id]
   (:assertion/keyword (id->assertion id)))
 
-
 (defn atom-input
   ([value]
    [:input {:type "text" :value @value
@@ -88,12 +87,11 @@
    [:input.btn {:type "button" :value "Submit assertion."
                   :on-click (fn []
                               (do (comm/submit-assertion @form)
-                                  (reset! form {})
-                                  (reset! mode-atom :relate-assert)))}]
+                                  (reset! form {})))}]
    [:input.btn {:type "button" :value "Submit assertion and add relations."
                   :on-click (fn []
                               (do (comm/submit-assertion @form)
-                                  (reset! form {})))}]
+                                  (reset! mode-atom :relate-assert)))}]
    [submit-button "Return to assertions." mode-atom :view-assert comm/all-assertions]
    [:div (str @form)]])
 
@@ -194,7 +192,8 @@
     [:div#view-assert
      [:h1 "View assertions."]
      [:p "This transaction..."]
-     [:table [into [:tbody] (mapv #(arrange-assertions % comm/assertion-to-edit) @comm/assertions)]]
+     [:table [into [:tbody] (mapv #(arrange-assertions % comm/assertion-to-edit)
+                                  @comm/assertions)]]
      [:p]
      [submit-button "Add assertion" mode-atom :add-assert]
      [submit-button "Return to home" mode-atom :welcome]]))
@@ -204,7 +203,63 @@
   [:div#view-transactions
    [:h1 "View transactions."]
    [:p "This page lists all transactions and allows filtering."]
+   [submit-button "Add transaction" mode-atom :add-transaction]
    [submit-button "Return to home" mode-atom :welcome]])
+
+(defn assertion-select-row [assertion form remove?]
+  (let [[remove-key add-key button-text] (if remove?
+                                           [:related-assertions :relatable-assertions "Remove"]
+                                           [:relatable-assertions :related-assertions "Add"])
+        {id :db/id
+         desc :assertion/description} assertion] 
+    [:tr {:id id} [:td "..."] [:td desc]
+     [:td [:input.btn {:type "button" :value (str button-text " assertion.")
+                       :on-click (fn []
+                                   (do
+                                     (swap! form
+                                            update
+                                            remove-key
+                                            (fn [v]
+                                              (vec
+                                               (remove #(= (:db/id %) id) v))))
+                                     (swap! form update add-key #(conj % assertion))))}]]
+     [:td] [:td]]))
+
+(defn add-transaction [form]
+  (r/with-let [show-list (r/atom false)] 
+    [:div#add-transaction
+     [:h1 "Add a transaction"]
+     [:p]
+     [:div "Enter an optional description for your transaction."
+      [:p]
+      [:textarea {:value (:transaction/description @form)
+                  :rows "1"
+                  :cols "100"
+                  :style {:cols "200" :rows "200"}
+                  :on-change #(swap! form
+                                     assoc
+                                     :transaction/description
+                                     (-> % .-target .-value))}]]
+     [:div "Select a top-level assertion."
+      ]
+     [:div
+      [submit-button
+       (if @show-list
+         "Hide list of assertions."
+         "Show list of assertions.")
+       show-list
+       (if @show-list false true)]
+      [:div [:p]
+       (when @show-list
+         [:table {:style {:float "left"}}
+          [:caption "Assertions to add:"]
+          [into [:tbody] (mapv #(assertion-select-row % form false) (:relatable-assertions @form))]])
+       (when (not (empty? (:related-assertions @form)))
+         [:table {:style {:float "left" :white-space "nowrap"}}
+          [:caption "Assertions added:"]
+          [into [:tbody] (mapv #(assertion-select-row % form true) (:related-assertions @form))]])]]
+     
+     ]))
 
 (defn app []
   (case @mode-atom
@@ -213,6 +268,9 @@
     :edit-assert [edit-assert comm/assertion-to-edit]
     :relate-assert [relate-assert comm/assertion-to-edit]
     :view-transactions [view-transactions]
+    :add-transaction [add-transaction (r/atom {:relatable-assertions @comm/assertions
+                                               :related-assertions []})]
+    :edit-transaction [add-transaction comm/transaction-to-edit]
     [welcome-screen]))
 
 (defonce root (rdomc/create-root (.getElementById js/document "root")))

@@ -7,6 +7,7 @@
 (defonce base "http://34.238.208.202:5001/")
 (defonce assertions (r/atom nil))
 (defonce assertion-to-edit (r/atom {}))
+(defonce transaction-to-edit (r/atom {}))
 
 (defn get-req
   ([path a]
