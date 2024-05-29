@@ -4,10 +4,21 @@
              [cljs.core.async :refer [<!]]
              [reagent.core :as r]))
 
-(defonce base "http://34.238.208.202:5001/")
+(defonce base "http://choochoo.dyn.gsu.edu:5001/")
 (defonce assertions (r/atom nil))
 (defonce assertion-to-edit (r/atom {}))
 (defonce transaction-to-edit (r/atom {}))
+
+(defn top-level-assertions [av]
+  (filter #(not (contains? % :assertion/depends-on)) @av))
+
+(defn child-assertions [av pid]
+  (let [id->assertion (fn [id] (filter #(= (:db/id %) id) @av))
+        full-assertion (first (id->assertion pid))]
+    (->> (:assertion/dependent full-assertion)
+         (map :db/id)
+         (map id->assertion)
+         flatten)))
 
 (defn get-req
   ([path a]

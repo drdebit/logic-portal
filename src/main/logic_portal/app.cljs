@@ -225,6 +225,10 @@
                                      (swap! form update add-key #(conj % assertion))))}]]
      [:td] [:td]]))
 
+(defn category-option [{id :db/id
+                        s :assertion/description}]
+  [:option {:value id} s])
+
 (defn add-transaction [form]
   (r/with-let [show-list (r/atom false)] 
     [:div#add-transaction
@@ -241,7 +245,20 @@
                                      :transaction/description
                                      (-> % .-target .-value))}]]
      [:div "Select a top-level assertion."
-      ]
+      [into [:select {:id "top-select" 
+                      :on-change #(when (not (= "" (.. % -target -value)))
+                                    (swap! form update :related-assertions (fn [v]
+                                                                             (assoc v 0 (js/parseInt (.. % -target -value))))))}]
+       (mapv category-option [into [{:db/id "" :assertion/description ""}]
+                              (comm/top-level-assertions comm/assertions)])]]
+     [:div "Select a next-level assertion."
+      [into [:select {:id "next-select" 
+                      :on-change #(when (not (= "" (.. % -target -value)))
+                                    (swap! form update :related-assertions (fn [v]
+                                                                             (assoc v 1 (js/parseInt (.. % -target -value))))))}]
+       (map category-option [into [{:db/id "" :assertion/description ""}]
+                              (comm/child-assertions comm/assertions (first (:related-assertions @form)))])]]
+     [:div (str @form)]
      [:div
       [submit-button
        (if @show-list
@@ -254,7 +271,7 @@
          [:table {:style {:float "left"}}
           [:caption "Assertions to add:"]
           [into [:tbody] (mapv #(assertion-select-row % form false) (:relatable-assertions @form))]])
-       (when (not (empty? (:related-assertions @form)))
+       (when (and @show-list (not (empty? (:related-assertions @form))))
          [:table {:style {:float "left" :white-space "nowrap"}}
           [:caption "Assertions added:"]
           [into [:tbody] (mapv #(assertion-select-row % form true) (:related-assertions @form))]])]]
