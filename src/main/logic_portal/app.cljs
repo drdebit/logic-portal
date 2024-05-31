@@ -8,7 +8,7 @@
             [logic-portal.comm :as comm]))
 
 (defonce title "Welcome to Assertive Accounting.")
-(defonce mode-atom (r/atom :welcome))
+(defonce mode-atom (r/atom :welcome)) 
 
 (defn id->assertion [id]
   (first (filter #(= id (:db/id %)) @comm/assertions)))
@@ -93,7 +93,7 @@
                               (do (comm/submit-assertion @form)
                                   (reset! mode-atom :relate-assert)))}]
    [submit-button "Return to assertions." mode-atom :view-assert comm/all-assertions]
-   [:div (str @form)]])
+   #_[:div (str @form)]])
 
 (defn select-assertions [{id :assertion/keyword
                           s :assertion/description}]
@@ -225,9 +225,39 @@
                                      (swap! form update add-key #(conj % assertion))))}]]
      [:td] [:td]]))
 
-(defn category-option [{id :db/id
-                        s :assertion/description}]
+(defn assertion-option [{id :db/id
+                         s :assertion/description}]
   [:option {:value id} s])
+
+(defn required-value-prompts [i form]
+  (when-let [cid (get (:related-assertions @form) i)]
+    (let [rv-fun (fn [value]
+                   (swap! form
+                          update
+                          :related-values
+                          (fnil (fn [v]
+                                  (assoc v i value)) [])))]
+      (if (contains? (id->assertion cid) :assertion/required-value)
+        [:textarea {:value (get (:related-values @form) i)
+                    :rows "1"
+                    :cols "100"
+                    :style {:cols "200" :rows "200"}
+                    :on-change #(rv-fun (-> % .-target .-value))}] 
+        (rv-fun "")))))
+
+(defn next-level-assertions [form n]
+  (map (fn [i]
+         (let [ras (get (:related-assertions @form) i)
+               cas (comm/child-assertions comm/assertions ras)]
+           (when (not-empty cas)
+             [:div "Select a next-level assertion."
+              [into [:select {:id (str "next-select" n)
+                              :on-change #(when (not (= "" (.. % -target -value)))
+                                            (swap! form update :related-assertions
+                                                   (fn [v]
+                                                     (assoc v (+ i 1) (js/parseInt (.. % -target -value))))))}]
+               (map assertion-option (into [{:db/id "" :assertion/description ""}] cas))]
+              (required-value-prompts (+ i 1) form)]))) (range n)))
 
 (defn add-transaction [form]
   (r/with-let [show-list (r/atom false)] 
@@ -247,18 +277,15 @@
      [:div "Select a top-level assertion."
       [into [:select {:id "top-select" 
                       :on-change #(when (not (= "" (.. % -target -value)))
-                                    (swap! form update :related-assertions (fn [v]
-                                                                             (assoc v 0 (js/parseInt (.. % -target -value))))))}]
-       (mapv category-option [into [{:db/id "" :assertion/description ""}]
-                              (comm/top-level-assertions comm/assertions)])]]
-     [:div "Select a next-level assertion."
-      [into [:select {:id "next-select" 
-                      :on-change #(when (not (= "" (.. % -target -value)))
-                                    (swap! form update :related-assertions (fn [v]
-                                                                             (assoc v 1 (js/parseInt (.. % -target -value))))))}]
-       (map category-option [into [{:db/id "" :assertion/description ""}]
-                              (comm/child-assertions comm/assertions (first (:related-assertions @form)))])]]
-     [:div (str @form)]
+                                    (do (swap! form assoc :related-assertions
+                                               [(js/parseInt (.. % -target -value))])
+                                        (swap! form assoc :related-values [])
+                                        (set! (.. (.getElementById js/document "next-select0") -value) "")))}]
+       (map assertion-option (into [{:db/id "" :assertion/description ""}] (comm/top-level-assertions comm/assertions)))]
+      (required-value-prompts 0 form)]
+     (when-let [pa (get (:related-assertions @form) 0)]
+       (next-level-assertions form (count (:related-assertions @form))))
+     #_[:div (str @form)]
      [:div
       [submit-button
        (if @show-list
@@ -274,9 +301,7 @@
        (when (and @show-list (not (empty? (:related-assertions @form))))
          [:table {:style {:float "left" :white-space "nowrap"}}
           [:caption "Assertions added:"]
-          [into [:tbody] (mapv #(assertion-select-row % form true) (:related-assertions @form))]])]]
-     
-     ]))
+          [into [:tbody] (mapv #(assertion-select-row % form true) (:related-assertions @form))]])]]]))
 
 (defn app []
   (case @mode-atom
