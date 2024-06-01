@@ -81,9 +81,14 @@
                 :cols "100"
                 :style {:cols "200" :rows "200"}
                 :on-change #(swap! form assoc :assertion/description (-> % .-target .-value))}]]
-   (r/with-let [new-value (r/atom "")]
-     [:div "Enter an (optional) value to associate with the assertion."
-      [atom-input form [:assertion/required-value]]])
+   [:div "Enter an (optional) value and data type (one of \"text\", \"number\", or \"reference\") to associate with the assertion."
+    [atom-input form [:assertion/require-value :required-value/description]]
+    [:textarea {:value (name (or (get-in @form [:assertion/require-value
+                                                :required-value/data-type]) ""))
+                :rows "1"
+                :on-change #(swap! form assoc-in [:assertion/require-value
+                                                  :required-value/data-type] (keyword (-> % .-target .-value)))}]
+    #_[atom-input form [:assertion/required-value :required-value/data-type]]]
    [:input.btn {:type "button" :value "Submit assertion."
                   :on-click (fn []
                               (do (comm/submit-assertion @form)
@@ -93,7 +98,7 @@
                               (do (comm/submit-assertion @form)
                                   (reset! mode-atom :relate-assert)))}]
    [submit-button "Return to assertions." mode-atom :view-assert comm/all-assertions]
-   #_[:div (str @form)]])
+   [:div (str @form)]])
 
 (defn select-assertions [{id :assertion/keyword
                           s :assertion/description}]
@@ -280,7 +285,7 @@
                                     (do (swap! form assoc :related-assertions
                                                [(js/parseInt (.. % -target -value))])
                                         (swap! form assoc :related-values [])
-                                        (set! (.. (.getElementById js/document "next-select0") -value) "")))}]
+                                        (set! (.. (.getElementById js/document "next-select1") -value) "")))}]
        (map assertion-option (into [{:db/id "" :assertion/description ""}] (comm/top-level-assertions comm/assertions)))]
       (required-value-prompts 0 form)]
      (when-let [pa (get (:related-assertions @form) 0)]
