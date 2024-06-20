@@ -1,10 +1,12 @@
 (ns logic-portal.app
+  (:require-macros [cljs.core.async.macros :refer [go]])
   (:require ["react" :as react]
             [reagent.core :as r]
             [reagent.dom :as rdom]
             [reagent.dom.client :as rdomc]
             [reagent-forms.core :refer [bind-fields]]
             [clojure.string :as str]
+            [cljs.core.async :refer [<! >!]]
             [logic-portal.comm :as comm]))
 
 (defonce title "Welcome to Assertive Accounting.")
@@ -54,7 +56,10 @@
     [:div#welcome-screen
      [:h1 title]
      [:p "This application demonstrates assertive accounting."]
-     [submit-button "View assertions" mode-atom :view-assert comm/all-assertions]
+     [submit-button "View assertions" mode-atom
+      :view-assert (fn []
+                     (go (>! comm/c {:path "all-assertions/" :type :get :atom comm/assertions})))
+      #_comm/all-assertions]
      [submit-button "View transactions" mode-atom :view-transactions]]))
 
 (defn vec-remove
@@ -91,8 +96,12 @@
     #_[atom-input form [:assertion/required-value :required-value/data-type]]]
    [:input.btn {:type "button" :value "Submit assertion."
                   :on-click (fn []
-                              (do (comm/submit-assertion @form)
-                                  (reset! form {})))}]
+                              (go (>! comm/c {:path "add-assertion/"
+                                              :type :post
+                                              :data @form})
+                                  (>! comm/c {:type :reset
+                                              :atom form
+                                              :new-value {}})))}]
    [:input.btn {:type "button" :value "Submit assertion and add relations."
                   :on-click (fn []
                               (do (comm/submit-assertion @form)
@@ -189,7 +198,15 @@
    [:td [:input.btn {:type "button" :value "Relate assertion."
                      :on-click (fn [] (do
                                         (reset! mode-atom :relate-assert)
-                                        (comm/retrieve-assertion-with-relations k a)))}]]])
+                                        (comm/retrieve-assertion-with-relations k a)))}]]
+   [:td [:input.btn {:type "button" :value "Remove assertion"
+                     :on-click (fn []
+                                 (go (>! comm/c {:path "retract-assertion/"
+                                                  :type :post
+                                                  :data {:assertion/keyword k}})
+                                      (>! comm/c {:path "all-assertions/"
+                                                  :type :get
+                                                  :atom comm/assertions})))}]]])
 
 
 (defn view-assert []
@@ -241,13 +258,15 @@
                           update
                           :related-values
                           (fnil (fn [v]
-                                  (assoc v i value)) [])))]
-      (if (contains? (id->assertion cid) :assertion/required-value)
-        [:textarea {:value (get (:related-values @form) i)
-                    :rows "1"
-                    :cols "100"
-                    :style {:cols "200" :rows "200"}
-                    :on-change #(rv-fun (-> % .-target .-value))}] 
+                                  (assoc v i value)) [])))
+          a (id->assertion cid)]
+      (if (contains? a :assertion/require-value)
+        [:div "Enter " (get-in a [:assertion/require-value :required-value/description])
+         [:textarea {:value (get (:related-values @form) i)
+                                 :rows "1"
+                                 :cols "100"
+                                 :style {:cols "200" :rows "200"}
+                                 :on-change #(rv-fun (-> % .-target .-value))}]] 
         (rv-fun "")))))
 
 (defn next-level-assertions [form n]
@@ -290,8 +309,7 @@
       (required-value-prompts 0 form)]
      (when-let [pa (get (:related-assertions @form) 0)]
        (next-level-assertions form (count (:related-assertions @form))))
-     #_[:div (str @form)]
-     [:div
+     #_[:div
       [submit-button
        (if @show-list
          "Hide list of assertions."
