@@ -7,7 +7,8 @@
             [reagent-forms.core :refer [bind-fields]]
             [clojure.string :as str]
             [cljs.core.async :refer [<! >!]]
-            [logic-portal.comm :as comm]))
+            [logic-portal.comm :as comm]
+            [logic-portal.simulation :as sim]))
 
 (defonce title "Welcome to Assertive Accounting.")
 (defonce mode-atom (r/atom :welcome)) 
@@ -39,9 +40,20 @@
 (defn submit-button
   ([text a v]
    [:div [:input.btn {:type "button" :value text
-                      :on-click #(reset! a v)}]])
+                      :on-click
+                      (fn []
+                        (go (>! comm/c {:type :reset
+                                        :atom a
+                                        :new-value v})))}]])
   ([text a v f]
-   (do (f) (submit-button text a v)))
+   [:div [:input.btn {:type "button" :value text
+                      :on-click
+                      (fn []
+                        (go
+                          (f)
+                          (>! comm/c {:type :reset
+                                      :atom a
+                                      :new-value v})))}]])
   ([text f]
    [:div [:input.btn {:type "button" :value text
                       :on-click f}]]))
@@ -56,11 +68,9 @@
     [:div#welcome-screen
      [:h1 title]
      [:p "This application demonstrates assertive accounting."]
-     [submit-button "View assertions" mode-atom
-      :view-assert (fn []
-                     (go (>! comm/c {:path "all-assertions/" :type :get :atom comm/assertions})))
-      #_comm/all-assertions]
-     [submit-button "View transactions" mode-atom :view-transactions]]))
+     [submit-button "Run simulation" mode-atom :simulation comm/all-assertions]
+     [submit-button "View assertions" mode-atom :view-assert comm/all-assertions]
+     [submit-button "View transactions" mode-atom :view-transactions comm/all-assertions]]))
 
 (defn vec-remove
   "remove elem in coll"
@@ -95,17 +105,24 @@
                                                   :required-value/data-type] (keyword (-> % .-target .-value)))}]
     #_[atom-input form [:assertion/required-value :required-value/data-type]]]
    [:input.btn {:type "button" :value "Submit assertion."
-                  :on-click (fn []
-                              (go (>! comm/c {:path "add-assertion/"
-                                              :type :post
-                                              :data @form})
-                                  (>! comm/c {:type :reset
-                                              :atom form
-                                              :new-value {}})))}]
+                :on-click (fn []
+                            (go (>! comm/c {:path "add-assertion/"
+                                            :type :post
+                                            :data @form})
+                                (>! comm/c {:type :reset
+                                            :atom form
+                                            :new-value {}})))}]
    [:input.btn {:type "button" :value "Submit assertion and add relations."
-                  :on-click (fn []
-                              (do (comm/submit-assertion @form)
-                                  (reset! mode-atom :relate-assert)))}]
+                :on-click (fn []
+                            (go (>! comm/c {:path "add-assertion/"
+                                            :type :post
+                                            :data @form})
+                                (>! comm/c {:type :get
+                                            :atom comm/assertion-to-edit
+                                            :path (str "get-assertion/" (:assertion/keyword @form))})
+                                (>! comm/c {:type :reset
+                                            :atom mode-atom
+                                            :new-value :relate-assert})))}]
    [submit-button "Return to assertions." mode-atom :view-assert comm/all-assertions]
    [:div (str @form)]])
 
@@ -202,12 +219,11 @@
    [:td [:input.btn {:type "button" :value "Remove assertion"
                      :on-click (fn []
                                  (go (>! comm/c {:path "retract-assertion/"
-                                                  :type :post
-                                                  :data {:assertion/keyword k}})
-                                      (>! comm/c {:path "all-assertions/"
-                                                  :type :get
-                                                  :atom comm/assertions})))}]]])
+                                                 :type :post
+                                                 :data {:assertion/keyword k}})
+                                     (comm/all-assertions)))}]]])
 
+(defonce graph-state (r/atom '(+ 1 2 (- 4 2) (/ 123 3) (inc 25))))
 
 (defn view-assert []
   (r/with-let [form (r/atom {})] 
@@ -224,7 +240,7 @@
 (defn view-transactions []
   [:div#view-transactions
    [:h1 "View transactions."]
-   [:p "This page lists all transactions and allows filtering."]
+   [:p "This page lists all transactions and allows filtering."] 
    [submit-button "Add transaction" mode-atom :add-transaction]
    [submit-button "Return to home" mode-atom :welcome]])
 
@@ -233,7 +249,7 @@
                                            [:related-assertions :relatable-assertions "Remove"]
                                            [:relatable-assertions :related-assertions "Add"])
         {id :db/id
-         desc :assertion/description} assertion] 
+         desc :assertion/description} assertion]
     [:tr {:id id} [:td "..."] [:td desc]
      [:td [:input.btn {:type "button" :value (str button-text " assertion.")
                        :on-click (fn []
@@ -263,10 +279,10 @@
       (if (contains? a :assertion/require-value)
         [:div "Enter " (get-in a [:assertion/require-value :required-value/description])
          [:textarea {:value (get (:related-values @form) i)
-                                 :rows "1"
-                                 :cols "100"
-                                 :style {:cols "200" :rows "200"}
-                                 :on-change #(rv-fun (-> % .-target .-value))}]] 
+                     :rows "1"
+                     :cols "100"
+                     :style {:cols "200" :rows "200"}
+                     :on-change #(rv-fun (-> % .-target .-value))}]] 
         (rv-fun "")))))
 
 (defn next-level-assertions [form n]
@@ -276,6 +292,7 @@
            (when (not-empty cas)
              [:div "Select a next-level assertion."
               [into [:select {:id (str "next-select" n)
+                              :key n
                               :on-change #(when (not (= "" (.. % -target -value)))
                                             (swap! form update :related-assertions
                                                    (fn [v]
@@ -310,21 +327,28 @@
      (when-let [pa (get (:related-assertions @form) 0)]
        (next-level-assertions form (count (:related-assertions @form))))
      #_[:div
-      [submit-button
-       (if @show-list
-         "Hide list of assertions."
-         "Show list of assertions.")
-       show-list
-       (if @show-list false true)]
-      [:div [:p]
-       (when @show-list
-         [:table {:style {:float "left"}}
-          [:caption "Assertions to add:"]
-          [into [:tbody] (mapv #(assertion-select-row % form false) (:relatable-assertions @form))]])
-       (when (and @show-list (not (empty? (:related-assertions @form))))
-         [:table {:style {:float "left" :white-space "nowrap"}}
-          [:caption "Assertions added:"]
-          [into [:tbody] (mapv #(assertion-select-row % form true) (:related-assertions @form))]])]]]))
+        [submit-button
+         (if @show-list
+           "Hide list of assertions."
+           "Show list of assertions.")
+         show-list
+         (if @show-list false true)]
+        [:div [:p]
+         (when @show-list
+           [:table {:style {:float "left"}}
+            [:caption "Assertions to add:"]
+            [into [:tbody] (mapv #(assertion-select-row % form false) (:relatable-assertions @form))]])
+         (when (and @show-list (not (empty? (:related-assertions @form))))
+           [:table {:style {:float "left" :white-space "nowrap"}}
+            [:caption "Assertions added:"]
+            [into [:tbody] (mapv #(assertion-select-row % form true) (:related-assertions @form))]])]]]))
+
+(defn simulation []
+  (r/with-let [stage (r/atom :start)
+               books (r/atom {})]
+    [:div#simulation {:style {:width "75%"
+                              :white-space "pre-wrap"}}
+     [sim/simulation]]))
 
 (defn app []
   (case @mode-atom
@@ -336,6 +360,7 @@
     :add-transaction [add-transaction (r/atom {:relatable-assertions @comm/assertions
                                                :related-assertions []})]
     :edit-transaction [add-transaction comm/transaction-to-edit]
+    :simulation [simulation]
     [welcome-screen]))
 
 (defonce root (rdomc/create-root (.getElementById js/document "root")))

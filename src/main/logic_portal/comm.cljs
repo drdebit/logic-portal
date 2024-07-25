@@ -10,6 +10,17 @@
 (defonce transaction-to-edit (r/atom {}))
 
 (def c (chan))
+(go-loop []
+  (let [m (<! c)]
+    (case (:type m)
+      :get (reset! (:atom m) (:body
+                              (<! (http/get (str base (:path m))
+                                            {:with-credentials? false}))))
+      :post (:status (<! (http/post (str base (:path m))
+                                    {:with-credentials? false
+                                     :edn-params (:data m)})))
+      :reset (reset! (:atom m) (:new-value m))))
+  (recur))
 
 (defn top-level-assertions [av]
   (filter #(not (contains? % :assertion/depends-on)) @av))
@@ -39,7 +50,9 @@
         (prn (:body response))))))
 
 (defn all-assertions []
-  (get-req (str base "all-assertions/") assertions))
+  (go (>! c {:path "all-assertions/"
+             :type :get
+             :atom assertions})))
 
 (defn all-relations [kw k a]
   (get-req (str base "all-relations/" kw) k a))
@@ -114,15 +127,3 @@
 ;;                       (reset! a (<! channel))))]
 ;;     (println x))
 ;;   (recur))
-
-(go-loop []
-  (let [m (<! c)]
-    (case (:type m)
-      :get (reset! (:atom m) (:body
-                                            (<! (http/get (str base (:path m))
-                                                          {:with-credentials? false}))))
-      :post (:status (<! (http/post (str base (:path m))
-                                    {:with-credentials? false
-                                     :edn-params (:data m)})))
-      :reset (reset! (:atom m) (:new-value m))))
-  (recur))
