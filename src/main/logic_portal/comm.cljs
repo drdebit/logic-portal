@@ -33,6 +33,10 @@
          (map id->assertion)
          flatten)))
 
+(defn parent-ids [id]
+  (let [vm->s (fn [vm] (apply hash-set (map :db/id vm)))]
+    (mapv :db/id (filter #(contains? (vm->s (:assertion/dependent %)) id) @assertions))))
+
 (defn get-req
   ([path a]
    (go (let [response (<! (http/get path {:with-credentials? false}))]
